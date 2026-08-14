@@ -1,0 +1,95 @@
+# Build output
+dist/
+*.exe
+*.test
+*.out
+
+# Coverage
+coverage.out
+coverage.txt
+coverage.html
+*.coverprofile
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local-only notes (not committed)
+*.local.md
+*.local.*
+
+# Guard only. The task list and its plans belong in a scratch directory,
+# never here: they name the operator's machine, paths, and watched
+# channels. This catches an export that lands in the repo by accident.
+_tasks/
+
+# Code review artifacts (local only)
+.claude/review/
+
+# Git worktrees for parallel development. The canonical checkout must not
+# see their contents as untracked files.
+.claude/worktrees/
+
+# Working notes for whoever picks the build up next. They describe work in
+# progress rather than the code, so they belong beside the checkout and not
+# in its history.
+.claude/handoff/
+
+# Build settings. .env carries this machine's own values, and one of them is
+# a Twitch application id tied to a single developer account. Its template is
+# generated and committed, and holds no value at all.
+.env
+!.env.template
+
+# Operator config. Running the quick start inside a checkout leaves a real
+# config here, and a populated one names the watched channels and the
+# library path. The config file can be called anything, so ignoring every
+# .toml and re-admitting the checked-in template is the only rule that
+# holds for a name nobody predicted.
+*.toml
+!config.default.toml
+
+# Library state. .dvr holds library.db and the ownership marker; incoming
+# holds the MPEG-TS a capture writes before it is remuxed and named.
+.dvr/
+incoming/
+*.db
+*.db-wal
+*.db-shm
+
+# Recordings. These are capture.container's accepted values, and one file
+# here is hours of a broadcast.
+*.mkv
+*.mp4
+*.ts
+
+# The sidecar written beside every recording, which carries everything the
+# database holds about it: the channel, the broadcast title, the category,
+# the timestamps and the library path. Ignoring the media and committing
+# the record of it would publish the watched channels anyway, which is the
+# same thing the *.toml rule above exists to prevent.
+#
+# Every JSON, then the four this repository does commit, because a sidecar
+# is named after its recording and a name nobody predicted cannot be
+# matched any other way.
+*.json
+!config.schema.json
+!release-config.json
+!.release-manifest.json
+!.claude/settings.json
+
+# A build with no -o lands here rather than in dist/, and the convention
+# that says to use one is a convention rather than a rule.
+/stream-dvr
+/stream-dvr.exe
+
+# Runtime logs, which carry channel names and library paths.
+logs/
+*.log

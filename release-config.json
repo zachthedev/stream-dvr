@@ -1,0 +1,20 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "packages": {
+    ".": {
+      "release-type": "go",
+      "initial-version": "0.0.0",
+      "changelog-sections": [
+        { "type": "feat", "section": "Features" },
+        { "type": "fix", "section": "Bug Fixes" },
+        { "type": "perf", "section": "Performance" },
+        { "type": "refactor", "section": "Refactoring" },
+        { "type": "docs", "section": "Documentation" },
+        { "type": "ci", "section": "Checks" },
+        { "type": "build", "section": "Build" },
+        { "type": "test", "section": "Tests" },
+        { "type": "chore", "section": "Miscellaneous" }
+      ]
+    }
+  }
+}

@@ -1,0 +1,242 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zach.tools/go/stream-dvr/internal/config/config",
+  "$ref": "#/$defs/Config",
+  "$defs": {
+    "Backfill": {
+      "properties": {
+        "automatic": {
+          "type": "boolean"
+        },
+        "settle": {
+          "type": "string"
+        },
+        "max_concurrent": {
+          "type": "integer"
+        },
+        "max_attempts": {
+          "type": "integer"
+        },
+        "rate_limit": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Capture": {
+      "properties": {
+        "poll_interval": {
+          "type": "string"
+        },
+        "quality": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "min_duration": {
+          "type": "string"
+        },
+        "max_concurrent": {
+          "type": "integer"
+        },
+        "container": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Channel": {
+      "properties": {
+        "platform": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "quality": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "backfill": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "platform",
+        "name"
+      ]
+    },
+    "Config": {
+      "properties": {
+        "schema_version": {
+          "type": "integer"
+        },
+        "library": {
+          "$ref": "#/$defs/Library"
+        },
+        "space": {
+          "$ref": "#/$defs/Space"
+        },
+        "capture": {
+          "$ref": "#/$defs/Capture"
+        },
+        "naming": {
+          "$ref": "#/$defs/Naming"
+        },
+        "notify": {
+          "$ref": "#/$defs/Notify"
+        },
+        "backfill": {
+          "$ref": "#/$defs/Backfill"
+        },
+        "twitch": {
+          "$ref": "#/$defs/Twitch"
+        },
+        "channels": {
+          "items": {
+            "$ref": "#/$defs/Channel"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "library"
+      ]
+    },
+    "Library": {
+      "properties": {
+        "root": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "root"
+      ]
+    },
+    "Naming": {
+      "properties": {
+        "template": {
+          "type": "string"
+        },
+        "timezone": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Notify": {
+      "properties": {
+        "desktop": {
+          "type": "boolean"
+        },
+        "webhook_url": {
+          "type": "string"
+        },
+        "on_recording_start": {
+          "type": "boolean"
+        },
+        "on_failure": {
+          "type": "boolean"
+        },
+        "on_library_full": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Purge": {
+      "properties": {
+        "watched_weight": {
+          "type": "number"
+        },
+        "age_weight": {
+          "type": "number"
+        },
+        "refetchable_weight": {
+          "type": "number"
+        },
+        "protect_for": {
+          "type": "string"
+        },
+        "trash_grace": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Recompress": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "after": {
+          "type": "string"
+        },
+        "codec": {
+          "type": "string"
+        },
+        "quality": {
+          "type": "integer"
+        },
+        "prefer_hardware": {
+          "type": "boolean"
+        },
+        "max_concurrent": {
+          "type": "integer"
+        },
+        "keep_original": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Space": {
+      "properties": {
+        "max_size": {
+          "type": "string"
+        },
+        "min_free": {
+          "type": "string"
+        },
+        "recompress": {
+          "$ref": "#/$defs/Recompress"
+        },
+        "purge": {
+          "$ref": "#/$defs/Purge"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Twitch": {
+      "properties": {
+        "client_id": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    }
+  },
+  "$comment": "Auto-generated by cmd/generate. Do not edit.",
+  "title": "stream-dvr configuration",
+  "description": "Configuration for the stream-dvr recording daemon."
+}

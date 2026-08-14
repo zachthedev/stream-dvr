@@ -1,0 +1,95 @@
+name: Deliver
+
+# Attaches binaries to a tag. Nothing here chooses a version, so the tag is
+# the only place one is decided. A release cannot appear without someone
+# deciding to make it.
+#
+# Two ways in, because Prepare's tag cannot start this by itself. A tag
+# created by GITHUB_TOKEN triggers no workflow, which is GitHub's rule for
+# stopping automation loops. Merging the release pull request therefore leaves
+# a tag and a release with no binaries on it, and running this by hand against
+# that tag fills it in. A tag pushed from a workstation carries a person's
+# credentials and does start this run, so that path needs no click.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build, for example v0.1.0'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  goreleaser:
+    name: GoReleaser
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      # Narrowed to this job, so the token that can write a release exists
+      # only where a release is written.
+      contents: write
+      # What attesting the built artifacts needs: an OIDC identity to sign
+      # as, and somewhere to record the result.
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The tag named on a manual run, or the pushed one otherwise.
+          ref: ${{ inputs.tag || github.ref }}
+          # The whole history, because the changelog is built from the
+          # commits since the previous tag and a shallow clone has neither.
+          fetch-depth: 0
+
+      # A tag can name any commit, including one whose checks failed or one
+      # that was never on main, and this job publishes what it is given. The
+      # check workflow does not run on a tag push at all: its trigger filters
+      # branches, and a tag ref matches no branch filter.
+      - name: Refuse a tag that is not on main
+        run: |
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::$(git rev-parse HEAD) is not on main, so nothing has checked it"
+            exit 1
+          fi
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          # Pinned exactly. The action is pinned by commit, but it downloads
+          # the goreleaser binary at run time, and a range would make that
+          # binary whatever was newest that morning. It is the one executable
+          # in this job that holds the token able to write a release, so it
+          # is the last place a floating version belongs. Dependabot raises
+          # this the same way it raises the actions.
+          version: 'v2.12.7'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          REPO_NAME: ${{ github.event.repository.name }}
+
+      # Signs what this job just built, so a downloader can ask GitHub
+      # whether a file came from this workflow at this commit.
+      #
+      # checksums.txt on its own proves only that the file matches a list
+      # published beside it, and whoever can write a release can rewrite
+      # both in one breath. The build is already reproducible, with
+      # -trimpath and mod_timestamp pinned to the commit, so an attestation
+      # is what lets somebody else check that rather than take it on faith.
+      #
+      # It runs after goreleaser rather than beside it, because the
+      # artifacts have to exist to be signed, and a failure here leaves a
+      # published release that is simply unattested.
+      - name: Attest the built binaries
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/checksums.txt

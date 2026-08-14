@@ -1,0 +1,95 @@
+version: 2
+
+# Releases are cut by hand: tag a commit and push the tag. This builds what
+# the tag points at and publishes it. Nothing here decides a version number,
+# so the tag is the only place one is chosen.
+
+builds:
+  - id: stream-dvr
+    main: ./cmd/stream-dvr
+    binary: stream-dvr
+    # CGO stays off because the SQLite driver is modernc's pure-Go one.
+    # Turning it on would need a C toolchain per target and would produce a
+    # binary tied to the build host's libc.
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    # The commit's time rather than the clock, so two builds of one tag
+    # produce identical bytes and a rebuilt artifact can be told from a
+    # substituted one. -trimpath covers the paths, and this covers the stamp.
+    mod_timestamp: '{{ .CommitTimestamp }}'
+    ldflags:
+      # The same values the Makefile injects. Without them a released binary
+      # reports no version and points its issue links at nothing, which makes
+      # it indistinguishable from a local build.
+      - -s -w
+      - -X zach.tools/go/stream-dvr/internal/version.semver={{ .Version }}
+      - -X zach.tools/go/stream-dvr/internal/remote.ldOwner={{ .Env.REPO_OWNER }}
+      - -X zach.tools/go/stream-dvr/internal/remote.ldRepo={{ .Env.REPO_NAME }}
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ignore:
+      # The daemon keeps recording with nobody signed in only through a
+      # scheduled task or a systemd user unit, neither of which exists on
+      # windows/arm64 in a form this project registers.
+      - goos: windows
+        goarch: arm64
+
+archives:
+  - id: archive
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    # Carried so the terms travel with the binary rather than only on a page
+    # the downloader may never open.
+    files:
+      - LICENSE
+      - README.md
+  # A bare binary as well, because the ordinary install is one file dropped
+  # somewhere on PATH and asking for an archive first is friction.
+  - id: bare
+    formats: [binary]
+    name_template: "{{ .Binary }}-{{ .Os }}-{{ .Arch }}"
+
+checksum:
+  name_template: 'checksums.txt'
+
+changelog:
+  # This writes the notes attached to the GitHub release, grouped from the
+  # commit subjects, which are Conventional Commits. CHANGELOG.md is a
+  # separate rendering that release-please writes from release-config.json.
+  #
+  # The two group differently on purpose. release-config.json gives test and
+  # chore their own sections and keeps ci apart from build, because a
+  # changelog is the project's record. These notes drop test and chore and
+  # fold ci into Build, because a release note is read by someone deciding
+  # whether to upgrade.
+  use: github
+  sort: asc
+  groups:
+    - title: Features
+      regexp: '^feat'
+      order: 0
+    - title: Bug Fixes
+      regexp: '^fix'
+      order: 1
+    - title: Performance
+      regexp: '^perf'
+      order: 2
+    - title: Refactoring
+      regexp: '^refactor'
+      order: 3
+    - title: Documentation
+      regexp: '^docs'
+      order: 4
+    - title: Build
+      regexp: '^(build|ci)'
+      order: 5
+    - title: Other
+      order: 99
+  filters:
+    exclude:
+      - '^test'
+      - '^chore'

@@ -1,0 +1,51 @@
+name: Prepare
+
+# Keeps a release pull request open against main, carrying the next version
+# and the changelog it would ship. Merging it writes the release commit,
+# creates the tag, and publishes a GitHub release. Nothing is published by
+# pushing to main.
+#
+# That release arrives with no binaries on it. The tag is made by this
+# workflow's own token, and GitHub starts no workflow from an event its token
+# caused, so Deliver does not see it. Run Deliver by hand against the tag to
+# attach them: Actions, Deliver, Run workflow, and name the tag. The
+# alternative is a personal access token here, which trades a click for a
+# credential that expires.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  release-please:
+    name: Release Please
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      # Narrowed to this job: it writes the release commit and the tag, and
+      # opens the pull request that carries them.
+      contents: write
+      pull-requests: write
+    steps:
+      # Runs under the workflow's own token rather than a GitHub App. Two
+      # things follow from that, and both are easy to undo by accident.
+      #
+      # It requires a repository setting that no file here records:
+      #   Settings, Actions, General, Workflow permissions,
+      #   "Allow GitHub Actions to create and approve pull requests"
+      # Without it this step fails with "GitHub Actions is not permitted to
+      # create or approve pull requests". A sibling repository that uses a
+      # GitHub App has it switched off, because an App does not need it, so
+      # copying settings across from one will break this.
+      #
+      # The cost is that checks do not run on the release pull request,
+      # because GITHUB_TOKEN cannot trigger another workflow. That is
+      # acceptable here: the release pull request changes only CHANGELOG.md
+      # and the manifest, and main is checked before either is written.
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-config.json
+          manifest-file: .release-manifest.json

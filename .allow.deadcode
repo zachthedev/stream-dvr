@@ -1,0 +1,122 @@
+# Deadcode allow list.
+# Every entry must have a # [category] comment above its group.
+# Entries without a category tag will fail the check.
+#
+# Regenerate: go tool devtools deadcode update
+#
+# Categories:
+#   [public-api]  exported API with no caller under cmd/
+#   [test-only]  called from _test.go files, which deadcode cannot trace
+#   [platform]  platform-specific code not built on the current OS
+#   [scaffold]  framework wiring this build does not reach
+
+# [test-only]
+# An in-memory database, so a test needs no temp file.
+internal/store/store.go OpenMemory
+
+# [test-only]
+# How many recordings the remux budget is counting. Only a test asks. The
+# production paths spend and clear the budget without reading its size.
+internal/organize/organize.go failureBudget.tracking
+
+# [test-only]
+# The in-process credential store. Every other package's tests substitute it
+# for the file-backed one, which deadcode cannot trace.
+internal/secret/secret.go Memory.Delete
+internal/secret/secret.go Memory.Get
+internal/secret/secret.go Memory.Set
+internal/secret/secret.go NewMemory
+
+# [scaffold]
+# Listing the registered providers. Its own test is what holds the registry
+# and config.SupportedPlatforms to the same set of platforms. Nothing in cmd/
+# enumerates providers.
+internal/providers/providers.go Platforms
+
+# [scaffold]
+# Registering a schema migration. store.initSchema creates the library
+# database whole at version 1, so nothing registers a migration against it.
+internal/migrate/migrate.go baseRegistry.Register
+internal/migrate/sql.go SQLMigration.desc
+internal/migrate/sql.go SQLRegistry.Register
+
+# [test-only]
+# Rendering the version as a container image tag, which rejects the '+' a
+# SemVer build stamp carries. This project ships binaries and no image, so
+# version_test.go is the only caller.
+internal/version/version.go DockerTag
+
+# [scaffold]
+# GitHub owner and repo for URLs that point back at the project: issue links,
+# raw content, update checks. The Makefile injects both at link time, so a
+# release build carries the values. Nothing reads them.
+internal/remote/remote.go Owner
+internal/remote/remote.go RawURL
+internal/remote/remote.go Repo
+internal/remote/remote.go ensureInit
+
+# [scaffold]
+# Cross-platform path rendering, for generating a config consumed on another
+# operating system. Nothing generates one.
+internal/paths/paths.go ConfigPathFor
+internal/paths/paths.go Fixed
+internal/paths/paths.go HomeRelative
+internal/paths/paths.go Log.PathFor
+internal/paths/paths.go joinFor
+
+# [scaffold]
+# Logging surface beyond what the daemon asks for. The daemon logs through the
+# rotating logger at the standard levels, so Trace, Fail, and the wrappers have
+# no caller.
+internal/logger/logger.go Discard
+internal/logger/logger.go Logger.Fail
+internal/logger/logger.go Logger.Trace
+internal/logger/logger.go Logger.With
+internal/logger/logger.go Logger.WithGroup
+internal/logger/logger.go New
+
+# [scaffold]
+# Output shapes this project does not emit. The config is TOML and its schema
+# comes from reflection, so the JSON config generator and the banner stripper
+# have no caller.
+internal/generate/json.go JSONConfig.Generate
+internal/generate/strip.go StripLeadingBanner
+
+# [scaffold]
+# Migration registries for formats this project does not version. The library
+# database is the one versioned store and it uses the SQL registry, so the
+# JSON, TOML, and bytes registries have no caller.
+internal/migrate/json.go JSONMigration.desc
+internal/migrate/json.go JSONMigration.vsn
+internal/migrate/json.go JSONRegistry.NeedsMigration
+internal/migrate/json.go JSONRegistry.Run
+internal/migrate/json.go JSONRegistry.RunDev
+internal/migrate/json.go JSONRegistry.WithLogger
+internal/migrate/json.go JSONRegistry.WithVersionKey
+internal/migrate/json.go JSONRegistry.parse
+internal/migrate/json.go JSONRegistry.versionKey
+internal/migrate/json.go NewJSON
+internal/migrate/migrate.go BytesMigration.desc
+internal/migrate/migrate.go BytesMigration.vsn
+internal/migrate/migrate.go BytesRegistry.NeedsMigration
+internal/migrate/migrate.go BytesRegistry.Run
+internal/migrate/migrate.go BytesRegistry.RunDev
+internal/migrate/migrate.go BytesRegistry.WithLogger
+internal/migrate/migrate.go NewBytes
+internal/migrate/migrate.go baseRegistry.HasDev
+internal/migrate/migrate.go baseRegistry.RegisterDev
+internal/migrate/migrate.go baseRegistry.checkVersion
+internal/migrate/sql.go SQLRegistry.NeedsMigration
+internal/migrate/sql.go SQLRegistry.RunDev
+internal/migrate/sql.go SQLRegistry.WithLogger
+internal/migrate/toml.go NewTOML
+internal/migrate/toml.go TOMLMigration.desc
+internal/migrate/toml.go TOMLMigration.vsn
+internal/migrate/toml.go TOMLRegistry.NeedsMigration
+internal/migrate/toml.go TOMLRegistry.Run
+internal/migrate/toml.go TOMLRegistry.RunDev
+internal/migrate/toml.go TOMLRegistry.WithLogger
+internal/migrate/toml.go TOMLRegistry.WithVersionKey
+internal/migrate/toml.go TOMLRegistry.encode
+internal/migrate/toml.go TOMLRegistry.parse
+internal/migrate/toml.go TOMLRegistry.versionKey

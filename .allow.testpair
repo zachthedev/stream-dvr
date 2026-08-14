@@ -1,0 +1,43 @@
+# Test pairing allow list.
+# Every entry must have a # [category] comment above its group.
+# Entries without a category tag will fail the check.
+#
+# Regenerate: go tool devtools testpair update
+#
+# Categories:
+#   [multi-file]  subcommand files tested via main_test.go
+#   [cross-pkg]  test covers symbols from a different package
+#   [convention]  naming follows project convention, not strict Go idiom
+#   [scenario]  integration/scenario test not tied to one symbol
+
+# [convention]
+# assertOwnerOnly answers "may anything but the owner reach this path". That
+# needs an access list on Windows and a mode everywhere else, so the helper
+# splits by build tag. Its callers in load_test.go do not split:
+# TestSave_RestrictsTheFileToItsOwner and TestInit_RestrictsTheFileToItsOwner.
+# The code it checks lives in internal/fsretry, because the package performing
+# a write is the one that owns what the file ends up readable by. Neither file
+# has a source file to pair with, and an empty perm_other.go would exist for
+# the pairing rule alone.
+orphan-test internal/config/perm_other_test.go no source file internal/config/perm_other.go
+orphan-test internal/config/perm_windows_test.go no source file internal/config/perm_windows.go
+
+# [convention]
+# TestHelperProcess is the standard library's idiom for testing code that
+# spawns a subprocess. The test binary re-invokes itself and stands in for the
+# external program. The pattern fixes the name, which matches no symbol
+# because this is a process entrypoint rather than a test of one.
+name-mismatch internal/deps/deps_test.go TestHelperProcess: no symbol 'HelperProcess' in package
+name-mismatch internal/post/post_test.go TestHelperProcess: no symbol 'HelperProcess' in package
+name-mismatch internal/procgroup/procgroup_test.go TestHelperProcess: no symbol 'HelperProcess' in package
+name-mismatch internal/record/streamlink_test.go TestHelperProcess: no symbol 'HelperProcess' in package
+name-mismatch internal/service/service_test.go TestHelperProcess: no symbol 'HelperProcess' in package
+name-mismatch internal/fetch/fetch_test.go TestHelperProcess: no symbol 'HelperProcess' in package
+
+# [scenario]
+# The only test that registers a real task, behind //go:build schedulertest so
+# it never runs in the suite. It drives comScheduler end to end rather than any
+# symbol of its own, and a source file under the same tag would exist for the
+# pairing rule alone. Run it by hand:
+#   go test -tags schedulertest ./internal/service/
+orphan-test internal/service/scheduler_live_windows_test.go no source file internal/service/scheduler_live_windows.go

@@ -1,0 +1,74 @@
+# Coverage enforcement via go-test-coverage.
+# Install: go install github.com/vladopajic/go-test-coverage/v2@latest
+# Run:     make coverage
+#
+# A threshold is set per file, per package, and for the project total.
+
+profile: coverage.out
+
+threshold:
+  # Per-file minimum. Zero holds no single file to a floor, so a thin file is
+  # caught by the package figure it drags down.
+  file: 0
+
+  # Per-package minimum.
+  package: 80
+
+  # Overall project minimum.
+  total: 70
+
+override:
+  # cmd/ holds CLI wiring, which a unit test reaches only through the whole
+  # command. The behaviour under it lives in internal/ and is held to 80.
+  - threshold: 0
+    path: ^cmd/
+
+exclude:
+  paths:
+    # Raising a desktop notification over the session bus. Sending one
+    # needs a bus with a notification daemon on it, which a CI runner and a
+    # headless server both lack: a runner reaches a bus through autolaunch
+    # but nothing is listening on the other end, so the send path cannot
+    # run there whatever the test does.
+    #
+    # What can be tested here is tested, in desktop_linux_test.go. It covers
+    # how a machine with no bus at all is reported. It covers the
+    # runtime-directory fallback answering the same way, so a missing
+    # environment variable does not fail differently. Those are the paths an
+    # operator hits, because the common case on a server is no bus.
+    #
+    # The cost of this line: an untested addition to the file goes unnoticed.
+    - internal/notify/desktop_linux\.go$
+
+    # The notification area icon and the hidden window that owns it. Every
+    # function here calls into user32 or shell32, and running one changes
+    # the desktop of whoever runs the tests: an icon appears, and a balloon
+    # is shown over it. There is no headless mode to ask for instead.
+    #
+    # What can be tested here is tested, in tray_windows_test.go: the
+    # structure layout Windows reads by offset, the text copied into its
+    # fixed fields, and whether this process holds its console alone.
+    # Those are where a mistake is silent. A wrong offset is not rejected,
+    # it reads whatever sits at that position. A console misread as this
+    # process's own is hidden while an operator is looking at it.
+    - internal/notify/tray_windows\.go$
+
+    # Driving the Task Scheduler over COM. Register, Delete, Run, and Halt
+    # each change the machine running the tests: they create, remove, start,
+    # and stop a real scheduled task. There is no sandbox to point them at.
+    #
+    # What can be tested here is tested, in scheduler_com_windows_test.go,
+    # and it is more than the exclusion suggests. classifyCOM and stateOf are
+    # covered directly. Four cases drive the real scheduler without changing
+    # it: connecting, asking about a name nothing is registered under, doing
+    # it repeatedly to catch reference counting that would crash rather than
+    # return, and validating the document this package builds. The third
+    # pins notFoundHRESULT to what Windows answers. The fourth uses
+    # TASK_VALIDATE_ONLY, which parses and stops, and is what proves the
+    # scheduler accepts a document rather than merely that Go can parse it.
+    #
+    # Registering for real stays out, behind //go:build schedulertest.
+    #
+    # The cost of this line: an untested addition to the file goes unnoticed.
+    - internal/service/scheduler_com_windows\.go$
+

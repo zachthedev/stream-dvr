@@ -1,0 +1,149 @@
+version: "2"
+
+run:
+  timeout: 3m
+
+issues:
+  # Report every finding. The defaults cap repeats per linter and per message,
+  # so one run prints a different subset from the next as the cache changes.
+  # The cap also hides how much is outstanding.
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+
+linters:
+  default: none
+  enable:
+    # Bug detection
+    - errcheck
+    - errorlint
+    - govet
+    - staticcheck
+    - ineffassign
+    - bodyclose
+    - durationcheck
+    - nilerr
+    - copyloopvar
+
+    # Security
+    - gosec
+    # A gosec suppression names its rule in free text, because a nolint
+    # directive has linter granularity and not rule granularity: every
+    # //nolint:gosec switches off G204 too, and G204 is the one this
+    # config argues below must stay on. Nothing can validate the number,
+    # so this validates what can be: that every directive carries an
+    # explanation, names its linter, and still suppresses something.
+    - nolintlint
+    # A leaked *sql.Rows and an unchecked rows.Err() are both silent data
+    # loss under iteration, in a project whose whole record is a sqlite
+    # database.
+    - sqlclosecheck
+    - rowserrcheck
+
+    # Style & consistency
+    - misspell
+    - unconvert
+    - whitespace
+
+    # Declaration ordering
+    - decorder
+
+    # Complexity
+    - gocyclo
+    - nestif
+
+  settings:
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+      allow-unused: false
+    gocyclo:
+      # A baseline. Raise it for a legitimately large function, such as an
+      # event loop or a single-pass parser.
+      min-complexity: 20
+    nestif:
+      # A baseline. Raise it for a guard-heavy flow, such as a state machine
+      # or signal dispatch.
+      min-complexity: 6
+    errcheck:
+      check-type-assertions: true
+      exclude-functions:
+        # Rollback does nothing after a commit or an earlier rollback.
+        - (*database/sql.Tx).Rollback
+    gosec:
+      excludes:
+        # Fires on idiomatic size conversions and protocol decodes. Drop this
+        # exclusion for crypto or auth code, where the noise is worth paying.
+        - G115
+    decorder:
+      dec-order:
+        - type
+        - const
+        - var
+        - func
+      disable-dec-order-check: false
+      disable-init-func-first-check: false
+      disable-dec-num-check: true # allow multiple const/var blocks (grouped by concern)
+      ignore-underscore-vars: true
+    govet:
+      enable-all: true
+      disable:
+        # Struct-layout micro-optimization. Reorder fields on profile evidence.
+        - fieldalignment
+        # Fires on the idiomatic `if err := ...; err != nil`, where the noise
+        # outweighs the signal.
+        - shadow
+
+  exclusions:
+    generated: lax
+
+    # common-false-positives is absent on purpose. It suppresses G204, the
+    # rule for handing a variable to a subprocess. This project's whole job is
+    # handing remote-derived values to four external tools. It suppresses G304
+    # as well. Both are rules this codebase needs pointed at itself.
+    presets:
+      - comments
+      - legacy
+      - std-error-handling
+    rules:
+      # A file behind a build tag is linted once per GOOS, and a directive
+      # correct for one is unused for another: the conversion below is
+      # required where Bsize is uint32 and redundant where it is not, so no
+      # single answer satisfies both runs. Only nolintlint is relaxed, and
+      # only for files whose name says they are one platform's.
+      - linters: [nolintlint]
+        path: '_(unix|linux|darwin|windows)(_test)?\.go'
+
+      # G304 flags opening a path held in a variable. Reading and writing
+      # paths an operator names is this tool's entire job, so the rule fires
+      # on every config read, every lock file, and every staged write, and
+      # never on anything else. What confines a path here is
+      # naming.SanitizeSegment, organize.refuseReserved, store.storablePath
+      # and paths.RequireAbsent, each of which has tests. G204 stays on,
+      # because that one has something to say about this codebase.
+      - linters:
+          - gosec
+        text: 'G304'
+      # Job Objects, Shell_NotifyIcon and the window procedure are reachable
+      # only through unsafe.Pointer. Go offers no safe spelling for them.
+      - linters:
+          - gosec
+        text: 'G103'
+        path: _windows(_test)?\.go
+      - linters:
+          - errcheck
+        path: _test\.go
+      - linters:
+          - gocyclo
+        path: _test\.go
+      # Test fixtures write files, build paths under t.TempDir(), and re-run
+      # the test binary as a helper process. Each of those is what the check
+      # looks for, and in a test each one is the harness doing its job.
+      - linters:
+          - gosec
+        path: _test\.go
+        text: "G306|G204|G702|G703"

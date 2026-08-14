@@ -1,0 +1,212 @@
+# stream-dvr config. Defaults generated; edit this copy freely.
+# Contributors: update internal/config/*.go and run `make generate`.
+#
+# ///////////////////////////////////////////////
+# stream-dvr Configuration
+# ///////////////////////////////////////////////
+
+# Config format version. Leave it alone; stream-dvr uses it to
+# migrate this file when the format changes.
+schema_version = 1
+
+# ///// Library /////
+
+# Where recordings live.
+[library]
+# Library directory, which 'stream-dvr library init <path>' creates
+# and writes here. 'library adopt <path>' does the same for a folder
+# of recordings you already have. Pass --force to either to repoint
+# this at another library.
+root = ""
+# root = "/srv/vods"
+
+# ///// Space /////
+
+# What happens as the library fills. These settings are ordered by what
+# they cost you, cheapest first, and that is the order they apply in.
+# Everything down to recompress changes how much space a recording
+# takes. Purging and refusing change how many recordings you have. Only
+# you cross that line: nothing here deletes a recording on its own.
+[space]
+# Cap on total recording bytes. 0 disables the cap. Reaching it refuses
+# the next broadcast, which is the one outcome that costs you something
+# unrecorded, so leave room for the steps below to work in.
+# KB is 1000 bytes and KiB is 1024; both are accepted.
+max_size = "2TB"
+# Free space that must remain on the volume for everything that is not
+# this library. Recording stops before this is consumed, even if
+# max_size still has room.
+min_free = "100GB"
+
+# ///// Recompress /////
+
+# Re-encode older recordings to a denser codec. COSTS PICTURE QUALITY,
+# permanently: the video is decoded and compressed again, and the
+# original bitstream is gone unless keep_original is set. Costs no
+# broadcasts. It is the last step that frees space without losing a
+# recording.
+[space.recompress]
+# Off by default, because the loss cannot be undone, and because a
+# machine with no hardware encoder falls back to software at hours per
+# broadcast. Run 'stream-dvr doctor' to see the encoder this machine
+# would actually use before turning it on.
+enabled = false
+# How old a recording must be before it is re-encoded. A shorter age
+# degrades recordings you may still be watching.
+after = "30d"
+# One of: av1, hevc. Costs encoding time, not quality. av1 is smaller;
+# hevc encodes on hardware far more machines have and plays on more
+# devices.
+codec = "hevc"
+# Constant-quality level, 1 to 63. This is the quality you are
+# spending. Lower is better and larger. 30 suits stream content.
+quality = 30
+# Use a GPU encoder when one is present. Costs a little size at the
+# same perceived quality and saves hours per recording.
+prefer_hardware = true
+# Simultaneous re-encodes. Costs disk and CPU the recorder needs, so
+# keep this low.
+max_concurrent = 1
+# Keep the source after a verified re-encode. This is what makes the
+# quality loss reversible, and it spends the entire space saving to do
+# it, so the pair only makes sense while you judge the result.
+keep_original = false
+
+# ///// Purge /////
+
+# Scoring for the assisted purge. COSTS WHOLE BROADCASTS, and keeps the
+# quality of everything that remains. Nothing here deletes anything:
+# the daemon ranks candidates and you confirm, every time.
+[space.purge]
+# Added to the score once a recording has been watched.
+watched_weight = 3.0
+# Added to the score per full week of age.
+age_weight = 1.0
+# Added when the broadcast still exists upstream, because deleting a
+# re-fetchable copy is the cheapest deletion available.
+refetchable_weight = 2.0
+# Recordings younger than this never appear in the purge list. Costs
+# headroom: a long window puts recent broadcasts out of reach exactly
+# when the library is full.
+protect_for = "1w"
+# How long a purged recording stays recoverable. Costs headroom for
+# that whole period, because trashed bytes still count against max_size
+# until they are released.
+trash_grace = "1w"
+
+# ///// Capture /////
+
+# How broadcasts are captured.
+[capture]
+# How often each channel is checked for a live broadcast.
+poll_interval = "30s"
+# streamlink quality ladder, tried in order until one resolves.
+quality = ["1080p60", "1080p", "720p60", "best"]
+# Recordings shorter than this are marked failed rather than
+# named into the library, which keeps accidental restarts and
+# connection tests out of it. The file stays on disk; nothing
+# here deletes anything.
+min_duration = "2m0s"
+# Maximum simultaneous recordings.
+max_concurrent = 3
+# Container finished recordings are remuxed into. Capture always
+# writes MPEG-TS first, so a crash mid-broadcast still leaves a
+# playable file.
+container = "mkv"
+
+# ///// Naming /////
+
+# How a finished recording is named.
+[naming]
+# Path template, relative to the library root. Forward slashes
+# separate directories on every platform. Every placeholder used
+# must resolve, so a missing title delays the rename instead of
+# producing a name with a gap in it.
+template = "{author}/{year}/{author} - {date} {time} - {title}.{ext}"
+# template = "{channel}/{date} {title}.{ext}"
+# Location dates render in. "Local" uses the machine's zone.
+timezone = "Local"
+# timezone = "America/New_York"
+
+# ///// Notify /////
+
+# Where alerts go.
+[notify]
+# Raise a native desktop notification where one can be raised.
+# macOS and Linux post it from the recorder itself, which runs
+# inside your session. Windows runs the recorder in session 0,
+# where there is no desktop, so it needs the notify agent that
+# 'install' registers. With nobody signed in there is nowhere to
+# show a notification and the event is dropped; the daemon log
+# and the webhook still have it.
+desktop = true
+# POST one JSON object per event here. Empty disables it.
+# Sent in the background, so a receiver that is slow or gone
+# never delays a recording. The path is often the only thing
+# authorizing the post, so it is treated as a secret and never
+# logged. A credentialed URL is refused, a literal link-local
+# address is refused, and a redirect is never followed. A name
+# that resolves to one is not checked, so point this somewhere
+# you chose.
+webhook_url = ""
+# webhook_url = "https://ntfy.sh/your-topic"
+# Notify when a capture begins. Noisy if you watch many channels.
+on_recording_start = false
+# Notify when a capture or post-processing step fails.
+on_failure = true
+# Notify when the cap stops a recording. This is the only
+# event that costs you a broadcast, so leave it on.
+on_library_full = true
+
+# ///// Backfill /////
+
+# How a recovery pass behaves, whether the recorder started it or
+# you did. The recorder recovers on its own: after a restart, after
+# an outage ends, and every six hours as a matter of course,
+# reaching back at most two weeks. Only channels with backfill =
+# true are ever fetched. 'stream-dvr backfill --since 24h' is the
+# one-off, for reaching further back than that or for not waiting.
+# A fetched copy is worth less than a live recording, because
+# platforms mute a stored copy after the fact, so it never
+# replaces one you have.
+[backfill]
+# Let the recorder fetch what it missed without being asked: after
+# a restart, after an outage ends, and every few hours. Off leaves
+# 'stream-dvr backfill' as the only thing that fetches, so gaps
+# stay until you fill them. Either way a channel is fetched for
+# only when its own backfill setting is on.
+automatic = true
+# How long to leave a broadcast alone after it ends. A copy is not
+# published the instant a stream stops, and a broadcast with no
+# recorded end may still be running.
+settle = "2h0m0s"
+# How many fetches run at once. A fetch competes with recording for
+# the same link and disk, so this stays low.
+max_concurrent = 1
+# How many times one broadcast is retried before it is left alone.
+# Without a cap, a broadcast failing for a reason nothing recognizes
+# is retried on every pass forever.
+max_attempts = 5
+# Caps a fetch's bandwidth, in the form yt-dlp takes, such as 5M.
+# Empty leaves it uncapped, which can saturate the link during a live
+# capture.
+rate_limit = ""
+
+# ///// Twitch /////
+
+# The Twitch application this install authenticates as.
+[twitch]
+# Twitch application id, from dev.twitch.tv/console/apps. Register
+# your own: create an application, set the client type to public,
+# and paste its client id here. Empty leaves broadcast titles and
+# the batched listing a recovery pass reads unavailable.
+client_id = ""
+
+# ///// Channels /////
+
+# Channels to watch. Add one [[channels]] block per channel.
+# [[channels]]
+# platform = "twitch"
+# name = "examplechannel"
+# enabled = true
+# backfill = true

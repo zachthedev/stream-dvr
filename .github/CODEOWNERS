@@ -1,0 +1,12 @@
+# Review is required from the owner on every path by default.
+* @zachthedev
+
+# The supply chain surface: what CI trusts, what the build stamps in, and
+# what a fresh clone auto-approves. A change here is a change to what runs
+# without being asked.
+/.github/ @zachthedev
+/.claude/settings.json @zachthedev
+/Makefile @zachthedev
+/lefthook.yml @zachthedev
+/go.mod @zachthedev
+/go.sum @zachthedev

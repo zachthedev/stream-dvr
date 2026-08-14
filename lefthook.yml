@@ -1,0 +1,38 @@
+glob_matcher: doublestar
+
+pre-commit:
+  jobs:
+    # generate runs first so downstream jobs see fresh output. The skip
+    # clause short-circuits when no staged file matches any registered
+    # input pattern, so pre-commit stays fast on unrelated changes.
+    - name: generate
+      skip:
+        - run: >-
+            regex=$(go run ./cmd/generate list inputs | sed 's/\*/.*/g' | paste -sd'|' -)
+            && [ -n "$regex" ]
+            && ! git diff --cached --name-only | grep -qE "$regex"
+      run: >-
+        go run ./cmd/generate run &&
+        go run ./cmd/generate list outputs | while read -r f; do
+          [ -e "$f" ] && git add "$f";
+        done
+
+    - name: checks
+      group:
+        parallel: true
+        jobs:
+          - name: vet
+            glob: "**/*.go"
+            run: go vet ./...
+
+          # go.mod and go.sum record exactly which third-party code this
+          # project trusts. Staging whatever the resolver returns puts that
+          # decision in a commit nobody read, so this reports and stops.
+          # check.yml enforces tidiness anyway, so staging here would buy
+          # nothing.
+          - name: tidy
+            glob: "{**/*.go,go.mod,go.sum}"
+            run: >-
+              go mod tidy &&
+              { git diff --quiet go.mod go.sum ||
+                { echo "go.mod/go.sum changed. Review the diff and stage them yourself."; exit 1; }; }

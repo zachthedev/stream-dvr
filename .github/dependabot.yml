@@ -1,0 +1,27 @@
+version: 2
+
+# SHA-pinned actions and pinned tool versions never resolve forward on their
+# own, so something has to propose the bumps. The Go toolchain has no
+# cooldown, which leaves Dependabot as the only place this project can enforce
+# a minimum release age.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    # Three days covers the window between a compromised release going up and
+    # being pulled, which is the shape the tj-actions/changed-files compromise
+    # took.
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: ci
+
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: build

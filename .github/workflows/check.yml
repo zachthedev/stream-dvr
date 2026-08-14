@@ -1,0 +1,299 @@
+name: Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      code: ${{ steps.initial.outputs.code || steps.changed.outputs.any_changed }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+      - name: Detect initial commit
+        id: initial
+        run: |
+          if ! git rev-parse HEAD~1 >/dev/null 2>&1; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96 # v47.0.6
+        if: ${{ !steps.initial.outputs.code }}
+        id: changed
+        with:
+          files_ignore: |
+            CHANGELOG.md
+            .release-manifest.json
+
+  # ///// Canonical form /////
+
+  tidy:
+    needs: [gate]
+    if: needs.gate.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: make tidy
+
+  generate:
+    needs: [gate]
+    if: needs.gate.outputs.code == 'true'
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: make generate
+
+  # ///// Static analysis /////
+
+  # golangci-lint analyses one GOOS per run and .golangci.yml sets no build
+  # tags, so a single job leaves every file behind another platform's tag
+  # analysed by nothing. One run per supported GOOS, from one runner: the
+  # analysis is cross-platform even though the host is not.
+  lint:
+    needs: [gate]
+    if: needs.gate.outputs.code == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        goos: [linux, darwin, windows]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      # Modules are fetched here rather than left to the linter, because the
+      # linter reports a download it could not finish as a type error in
+      # every file that imports the module. One dropped connection reads as
+      # hundreds of undefined symbols, which names neither the module nor
+      # the network as the cause.
+      - name: Download modules
+        run: |
+          for attempt in 1 2 3; do
+            if go mod download; then exit 0; fi
+            echo "::warning::module download attempt $attempt failed, retrying"
+            sleep 5
+          done
+          echo "::error::modules could not be downloaded after 3 attempts"
+          exit 1
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        # Set on the step rather than the job, so the toolchain setup and its
+        # cache still resolve against the runner's own platform.
+        env:
+          GOOS: ${{ matrix.goos }}
+        with:
+          # Must be built with a Go at least as new as the one go.mod targets.
+          # An older golangci-lint refuses the config outright rather than
+          # linting what it understands.
+          version: v2.13.0
+
+  testpair:
+    needs: [gate]
+    if: needs.gate.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: make testpair
+
+  deadcode:
+    needs: [gate]
+    if: needs.gate.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      # The reachability analysis itself comes from x/tools. The project's own
+      # deadcode wraps it with the allow list and the category rules, and
+      # refuses to run without it rather than reporting an empty result.
+      #
+      # No install step: the analyser is a tool dependency, so this builds it
+      # from the version go.mod pins, with the toolchain that builds the code
+      # it reads. An analyser installed separately is compiled once and then
+      # ages against every toolchain bump, and one too old to type-check the
+      # module answers with errors rather than findings.
+      - run: make deadcode
+
+  # ///// Security /////
+
+  vulncheck:
+    needs: [gate]
+    if: needs.gate.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+      - run: make vulncheck
+
+  # ///// Behavior /////
+
+  # A profile only measures the files its own platform compiled, so one
+  # runner enforces the floor against half the code and certifies the other
+  # half's absence. Each platform is held to the threshold for what it
+  # actually builds.
+  coverage:
+    needs: [gate, lint, generate]
+    if: needs.gate.outputs.code == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: go install github.com/vladopajic/go-test-coverage/v2@v2.18.4
+      - run: make coverage
+
+  # macOS is a supported target and its own code path: the autostart manager,
+  # the hardware encoder and the path rules all differ there. Without a runner
+  # nothing exercises them.
+  test:
+    needs: [gate, lint, generate]
+    if: needs.gate.outputs.code == 'true'
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: go test -race -count=1 ./...
+
+  # The dev build is never exercised by the default lane, so its ownership
+  # interlock and any other dev-tagged code would rot unnoticed.
+  test-dev:
+    needs: [gate, lint, generate]
+    if: needs.gate.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: go test -race -count=1 -tags dev ./...
+
+  # ///// Artifact /////
+
+  build:
+    needs: [gate, lint, generate]
+    if: needs.gate.outputs.code == 'true'
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: make build
+
+  # build proves each runner can produce its own binary. This proves every
+  # released platform still links from one host, including both darwin
+  # architectures.
+  dist:
+    needs: [gate, lint, generate]
+    if: needs.gate.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: make dist
+
+  # ///// Aggregate /////
+
+  check:
+    if: always()
+    needs:
+      [gate, tidy, generate, lint, testpair, deadcode, vulncheck, coverage, test, test-dev, build, dist]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Listing workflow runs needs actions: read. The top-level contents: read
+    # sets every other scope to none, so without this the query below is
+    # refused rather than answered.
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Require base branch check
+        if: github.event_name == 'pull_request' && needs.gate.outputs.code != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # The gate skipped every job, so nothing here verified this code.
+          # The base branch's own push run did. That run may still be
+          # starting, so this polls for it. An API failure and a missing run
+          # need different answers: retrying a 403 or a rate limit burns the
+          # budget that caused it, so only absence is retried.
+          for _ in $(seq 1 30); do
+            if ! run_id=$(gh api \
+              "repos/$REPO/actions/workflows/check.yml/runs?event=push&head_sha=$BASE_SHA" \
+              --jq '.workflow_runs[0].id // empty'); then
+              echo "::error::querying check.yml runs for $BASE_SHA failed" >&2
+              exit 1
+            fi
+            if [ -n "$run_id" ]; then
+              gh run watch "$run_id" --repo "$REPO" --exit-status
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::no push run of check.yml for base commit $BASE_SHA after 5 minutes." >&2
+          echo "Push the base branch to produce one, then re-run this job." >&2
+          exit 1
+      - uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe # v1.2.2
+        with:
+          allowed-skips: tidy, generate, lint, testpair, deadcode, vulncheck, coverage, test, test-dev, build, dist
+          jobs: ${{ toJSON(needs) }}
