@@ -293,7 +293,7 @@ jobs:
           echo "::error::no push run of check.yml for base commit $BASE_SHA after 5 minutes." >&2
           echo "Push the base branch to produce one, then re-run this job." >&2
           exit 1
-      - uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe # v1.2.2
+      - uses: re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35 # v1.3.0
         with:
           allowed-skips: tidy, generate, lint, testpair, deadcode, vulncheck, coverage, test, test-dev, build, dist
           jobs: ${{ toJSON(needs) }}
